@@ -23,7 +23,6 @@ const BallDraw3D = dynamic(() => import('@/app/components/BallDraw3D'), {
 
 /**
  * KenoGame - Main game page
- * Assembles all components into the full game interface
  */
 export default function KenoGame() {
   const {
@@ -43,46 +42,57 @@ export default function KenoGame() {
     setWallet,
   } = useGameStore();
 
-  const { user: tgUser, initData, isTelegram } = useTelegram();
+  const { initData, isTelegram, isReady } = useTelegram();
   const authAttempted = useRef(false);
 
-  // ─── Telegram auto-login flow ────────────────────────────
+  // ─── AUTO-LOGIN: runs once when Telegram SDK is ready ─────
   useEffect(() => {
-    if (authAttempted.current) return;
+    if (!isReady) return;           // Wait for SDK to initialize
+    if (authAttempted.current) return; // Only attempt once
+    authAttempted.current = true;
 
-    const doAuth = async (payload: string) => {
-      authAttempted.current = true;
+    const doAuth = async () => {
+      console.log('[GAME] Starting auth flow...');
+      console.log('[GAME] isTelegram:', isTelegram);
+      console.log('[GAME] initData length:', initData?.length || 0);
+
       try {
         const res = await fetch('/api/auth/telegram', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initData: payload }),
+          body: JSON.stringify({
+            initData: isTelegram ? initData : '',
+          }),
         });
+
         const data = await res.json();
+        console.log('[GAME] Auth response:', JSON.stringify(data));
+
         if (data.success && data.data) {
           setUser(data.data.user, data.data.token);
-          if (data.data.user) {
-            // Fetch wallet after login
+          console.log('[GAME] User set in store:', data.data.user.id);
+
+          // Fetch wallet
+          if (data.data.user?.id) {
             try {
               const walletRes = await fetch(`/api/wallet/balance?userId=${data.data.user.id}`);
               const walletData = await walletRes.json();
+              console.log('[GAME] Wallet response:', JSON.stringify(walletData));
               if (walletData.success) setWallet(walletData.data);
-            } catch { /* wallet fetch is best-effort */ }
+            } catch (walletErr) {
+              console.error('[GAME] Wallet fetch failed:', walletErr);
+            }
           }
+        } else {
+          console.error('[GAME] Auth failed:', data.error);
         }
       } catch (err) {
-        console.error('Telegram auth failed:', err);
+        console.error('[GAME] Auth request failed:', err);
       }
     };
 
-    if (isTelegram && initData) {
-      // Running inside Telegram — use real initData
-      doAuth(initData);
-    } else {
-      // Dev mode — auto-create dev user
-      doAuth('');
-    }
-  }, [isTelegram, initData, setUser, setWallet]);
+    doAuth();
+  }, [isReady, isTelegram, initData, setUser, setWallet]);
 
   // Fetch initial game data
   const fetchGameData = useCallback(async () => {
@@ -124,7 +134,6 @@ export default function KenoGame() {
     fetchGameData();
     startRound();
 
-    // Poll for updates
     const interval = setInterval(fetchGameData, 5000);
     return () => clearInterval(interval);
   }, [fetchGameData, startRound]);
@@ -136,7 +145,6 @@ export default function KenoGame() {
       if (state.activeRound?.status === 'BETTING_OPEN' && state.timeRemaining > 0) {
         setTimeRemaining(state.timeRemaining - 1);
 
-        // When timer hits 0, simulate draw
         if (state.timeRemaining <= 1) {
           simulateDraw();
         }
@@ -146,7 +154,7 @@ export default function KenoGame() {
     return () => clearInterval(timer);
   }, [setTimeRemaining]);
 
-  // Simulate ball drawing (client-side preview)
+  // Simulate ball drawing
   const simulateDraw = async () => {
     setDrawing(true);
     const state = useGameStore.getState();
@@ -156,7 +164,6 @@ export default function KenoGame() {
       });
     }
 
-    // Draw 20 random numbers
     const drawn = new Set<number>();
     while (drawn.size < 20) {
       drawn.add(Math.floor(Math.random() * 80) + 1);
@@ -168,7 +175,6 @@ export default function KenoGame() {
       addDrawnNumber(numbers[i], i);
     }
 
-    // Wait a moment then reset for next round
     setTimeout(async () => {
       setDrawing(false);
       await fetchGameData();
@@ -176,7 +182,6 @@ export default function KenoGame() {
     }, 3000);
   };
 
-  // Render active tab content
   const renderTabContent = () => {
     switch (activeTab) {
       case 'GAME': return <GameTab />;
@@ -190,27 +195,12 @@ export default function KenoGame() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)', maxWidth: '500px', margin: '0 auto' }}>
-      {/* Header */}
       <GameHeader />
-
-      {/* 3D Ball Draw Area */}
-      {(isDrawing || drawnNumbers.length > 0) && (
-        <BallDraw3D />
-      )}
-
-      {/* 2D Ball Draw Fallback / Result Row */}
+      {(isDrawing || drawnNumbers.length > 0) && <BallDraw3D />}
       <BallDrawArea />
-
-      {/* Number Grid */}
       <NumberGrid />
-
-      {/* Bet Controls */}
       <BetControls />
-
-      {/* Tab Navigation */}
       <TabNavigation />
-
-      {/* Tab Content */}
       <div className="flex-1" style={{ background: 'var(--bg-primary)' }}>
         {renderTabContent()}
       </div>

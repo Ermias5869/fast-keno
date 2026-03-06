@@ -1,19 +1,15 @@
 'use client';
 
 /**
- * useTelegram — React hook for Telegram WebApp integration.
+ * useTelegram — React hook using @twa-dev/sdk for Telegram WebApp.
  *
  * Exposes:
- *   user       — Telegram user object (id, first_name, username, photo_url)
+ *   user       — Telegram user object
  *   initData   — raw initData string for backend verification
- *   themeParams — Telegram theme colors
  *   isTelegram — true if running inside Telegram WebApp
- *
- * Usage:
- *   const { user, initData, isTelegram } = useTelegram();
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
 interface TelegramUser {
   id: number;
@@ -24,93 +20,61 @@ interface TelegramUser {
   language_code?: string;
 }
 
-interface TelegramThemeParams {
-  bg_color?: string;
-  text_color?: string;
-  hint_color?: string;
-  link_color?: string;
-  button_color?: string;
-  button_text_color?: string;
-  secondary_bg_color?: string;
-}
-
 interface UseTelegramReturn {
   user: TelegramUser | null;
   initData: string;
-  themeParams: TelegramThemeParams;
   isTelegram: boolean;
-  ready: () => void;
-  expand: () => void;
-  close: () => void;
-}
-
-// Access the global Telegram WebApp object
-function getWebApp(): {
-  ready: () => void;
-  expand: () => void;
-  close: () => void;
-  initData: string;
-  initDataUnsafe: { user?: TelegramUser; [key: string]: unknown };
-  themeParams: TelegramThemeParams;
-  platform: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} | null {
-  if (typeof window === 'undefined') return null;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tg = (window as any)?.Telegram?.WebApp;
-  return tg || null;
+  isReady: boolean;
 }
 
 export function useTelegram(): UseTelegramReturn {
   const [user, setUser] = useState<TelegramUser | null>(null);
   const [initData, setInitData] = useState<string>('');
-  const [themeParams, setThemeParams] = useState<TelegramThemeParams>({});
   const [isTelegram, setIsTelegram] = useState<boolean>(false);
+  const [isReady, setIsReady] = useState<boolean>(false);
 
   useEffect(() => {
-    const webApp = getWebApp();
-    if (!webApp) {
-      setIsTelegram(false);
-      return;
-    }
+    const init = async () => {
+      try {
+        // Dynamic import — @twa-dev/sdk only works in browser
+        const WebApp = (await import('@twa-dev/sdk')).default;
 
-    setIsTelegram(true);
-    setInitData(webApp.initData || '');
-    setThemeParams(webApp.themeParams || {});
+        console.log('[TG] SDK loaded, platform:', WebApp.platform);
+        console.log('[TG] initData length:', WebApp.initData?.length || 0);
+        console.log('[TG] initDataUnsafe.user:', JSON.stringify(WebApp.initDataUnsafe?.user));
 
-    const tgUser = webApp.initDataUnsafe?.user;
-    if (tgUser) {
-      setUser(tgUser);
-    }
+        WebApp.ready();
+        WebApp.expand();
 
-    // Signal Telegram that the app is ready
-    webApp.ready();
-    // Expand to full screen
-    webApp.expand();
+        const tgInitData = WebApp.initData;
+        const tgUser = WebApp.initDataUnsafe?.user;
+
+        if (tgInitData && tgInitData.length > 0) {
+          setIsTelegram(true);
+          setInitData(tgInitData);
+          console.log('[TG] Running inside Telegram, initData available');
+        } else {
+          setIsTelegram(false);
+          console.log('[TG] Not inside Telegram or initData empty');
+        }
+
+        if (tgUser) {
+          setUser(tgUser as TelegramUser);
+          console.log('[TG] User found:', tgUser.id, tgUser.first_name);
+        }
+
+        setIsReady(true);
+      } catch (err) {
+        console.log('[TG] SDK not available (not in Telegram):', err);
+        setIsTelegram(false);
+        setIsReady(true);
+      }
+    };
+
+    init();
   }, []);
 
-  const ready = useCallback(() => {
-    getWebApp()?.ready();
-  }, []);
-
-  const expand = useCallback(() => {
-    getWebApp()?.expand();
-  }, []);
-
-  const close = useCallback(() => {
-    getWebApp()?.close();
-  }, []);
-
-  return {
-    user,
-    initData,
-    themeParams,
-    isTelegram,
-    ready,
-    expand,
-    close,
-  };
+  return { user, initData, isTelegram, isReady };
 }
 
 export default useTelegram;

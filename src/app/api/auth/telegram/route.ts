@@ -7,22 +7,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { initData } = body;
 
-    // Dev mode: create test user without Telegram
-    if (!initData && process.env.NODE_ENV === 'development') {
-      const result = await createDevUser('dev_user_' + Date.now());
+    console.log('[AUTH] /api/auth/telegram called');
+    console.log('[AUTH] initData present:', !!initData);
+    console.log('[AUTH] initData length:', initData?.length || 0);
+    console.log('[AUTH] NODE_ENV:', process.env.NODE_ENV);
+
+    // If no initData — create a dev user (works in both dev and prod for testing)
+    if (!initData || initData.length === 0) {
+      console.log('[AUTH] No initData — creating dev user');
+      const result = await createDevUser('player_' + Date.now());
+      console.log('[AUTH] Dev user created:', result.user.id);
       return NextResponse.json({ success: true, data: result });
     }
 
-    if (!initData) {
-      return NextResponse.json(
-        { success: false, error: 'initData is required' },
-        { status: 400 }
-      );
-    }
-
+    // Verify Telegram signature and create/find user
+    console.log('[AUTH] Verifying Telegram initData...');
     const result = await authenticateTelegram(initData);
+    console.log('[AUTH] User authenticated:', result.user.id, result.user.username);
+
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
+    console.error('[AUTH] Authentication error:', error);
     const { message, status, code } = handleApiError(error);
     return NextResponse.json({ success: false, error: message, code }, { status });
   }
