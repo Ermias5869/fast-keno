@@ -23,7 +23,7 @@ import { InvalidBetError, DuplicateBetError, BettingClosedError } from '@/shared
 import { maskUsername, generateSeed, hashSeed, generateFairNumbers, calculateMatches } from '@/shared/utils';
 import { checkBetRisk, recordExposure, calculateMaxPotentialPayout, updateHouseProfit } from '@/services/risk-service';
 import { lockFunds, settleBet } from '@/services/wallet-service';
-import { getUserById } from '@/services/auth-service';
+import { getUserByIdSync } from '@/services/auth-service';
 import type { RoundState, BetResult, PublicBet, BetStatus } from '@/shared/types';
 
 const log = createLogger('game-engine');
@@ -192,7 +192,7 @@ export async function placeBet(
   }
 
   // Lock funds
-  lockFunds(userId, amount, roundId);
+  await lockFunds(userId, amount, roundId);
 
   // Record exposure
   const maxPayout = calculateMaxPotentialPayout(amount, selectedNumbers.length);
@@ -216,7 +216,7 @@ export async function placeBet(
   bets.set(roundId, roundBets);
   round.totalBets += amount;
 
-  const user = getUserById(userId);
+  const user = getUserByIdSync(userId);
   const publicBet: PublicBet = {
     id: bet.id,
     maskedUsername: maskUsername(user?.username || null),
@@ -317,10 +317,10 @@ async function settleRound(roundId: string): Promise<void> {
     bet.status = payout > 0 ? 'WON' : 'LOST';
 
     // Settle wallet
-    settleBet(bet.userId, bet.amount, payout, roundId);
+    await settleBet(bet.userId, bet.amount, payout, roundId);
     totalPayout += payout;
 
-    const user = getUserById(bet.userId);
+    const user = getUserByIdSync(bet.userId);
     results.push({
       id: bet.id,
       userId: bet.userId,
@@ -400,7 +400,7 @@ export function getActiveRound(): RoundState | null {
 export function getRoundBets(roundId: string): PublicBet[] {
   const roundBets = bets.get(roundId) || [];
   return roundBets.map(bet => {
-    const user = getUserById(bet.userId);
+    const user = getUserByIdSync(bet.userId);
     return {
       id: bet.id,
       maskedUsername: maskUsername(user?.username || null),
@@ -491,7 +491,7 @@ export function getLeaderboard(limit: number = 20): { rank: number; maskedId: st
     .sort((a, b) => b[1].total - a[1].total)
     .slice(0, limit)
     .map(([userId, data], index) => {
-      const user = getUserById(userId);
+      const user = getUserByIdSync(userId);
       return {
         rank: index + 1,
         maskedId: maskUsername(user?.username || null),

@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
     // Dev mode: create test user without Telegram
     if (!initData && process.env.NODE_ENV === 'development') {
-      const result = createDevUser('dev_user_' + Date.now());
+      const result = await createDevUser('dev_user_' + Date.now());
       return NextResponse.json({ success: true, data: result });
     }
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = authenticateTelegram(initData);
+    const result = await authenticateTelegram(initData);
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     const { message, status, code } = handleApiError(error);

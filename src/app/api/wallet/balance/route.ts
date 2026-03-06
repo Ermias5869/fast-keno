@@ -15,11 +15,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (type === 'transactions') {
-      const txns = getTransactionHistory(userId);
+      const txns = await getTransactionHistory(userId);
       return NextResponse.json({ success: true, data: txns });
     }
 
-    const wallet = getWalletBalance(userId);
+    const wallet = await getWalletBalance(userId);
     return NextResponse.json({ success: true, data: wallet });
   } catch (error) {
     console.error('Wallet error:', error);

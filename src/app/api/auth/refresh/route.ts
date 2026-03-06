@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = refreshAuthToken(refreshToken);
+    const result = await refreshAuthToken(refreshToken);
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     const { message, status, code } = handleApiError(error);

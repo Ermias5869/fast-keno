@@ -2,192 +2,222 @@
  * Wallet Service
  * Handles all balance operations with strict transactional integrity.
  *
+ * NOW USES PRISMA + PostgreSQL for persistent storage.
+ *
  * CRITICAL RULES:
  * - Never update balance directly without a transaction record
  * - Always lock funds before bet
  * - Release locked funds after round settlement
- * - Use atomic operations to prevent race conditions
+ * - Use Prisma transactions for atomicity
  */
 
+import prisma from '@/infra/db';
 import { createLogger } from '@/infra/logger';
 import { InsufficientBalanceError } from '@/shared/errors';
-import { getUserById } from '@/services/auth-service';
+import { cacheUser } from '@/services/auth-service';
 
 const log = createLogger('wallet-service');
-
-// ============================================
-// In-memory transaction log (dev mode)
-// In production, uses Prisma + PostgreSQL with proper DB transactions
-// ============================================
-interface TransactionRecord {
-  id: string;
-  userId: string;
-  type: 'BET' | 'WIN' | 'DEPOSIT' | 'WITHDRAW' | 'ROLLBACK';
-  amount: number;
-  roundId: string | null;
-  createdAt: Date;
-}
-
-const transactions: TransactionRecord[] = [];
-let txCounter = 0;
 
 /**
  * Get user wallet state
  */
-export function getWalletBalance(userId: string) {
-  const user = getUserById(userId);
-  if (!user) throw new Error('User not found');
+export async function getWalletBalance(userId: string) {
+  const wallet = await prisma.wallet.findUnique({
+    where: { userId },
+  });
+
+  if (!wallet) {
+    // Auto-create wallet if missing
+    const newWallet = await prisma.wallet.create({
+      data: { userId, balance: 10000, lockedBalance: 0, totalDeposit: 0, totalWithdraw: 0 },
+    });
+    return {
+      balance: Number(newWallet.balance),
+      lockedBalance: Number(newWallet.lockedBalance),
+      totalDeposit: Number(newWallet.totalDeposit),
+      totalWithdraw: Number(newWallet.totalWithdraw),
+    };
+  }
 
   return {
-    balance: user.balance,
-    lockedBalance: user.lockedBalance,
-    totalDeposit: 0,
-    totalWithdraw: 0,
+    balance: Number(wallet.balance),
+    lockedBalance: Number(wallet.lockedBalance),
+    totalDeposit: Number(wallet.totalDeposit),
+    totalWithdraw: Number(wallet.totalWithdraw),
   };
 }
 
 /**
  * Lock funds for a bet (moves from balance to lockedBalance)
- * This is an atomic operation that creates a transaction record.
+ * Uses Prisma transaction for atomicity.
  */
-export function lockFunds(userId: string, amount: number, roundId: string): TransactionRecord {
-  const user = getUserById(userId);
-  if (!user) throw new Error('User not found');
+export async function lockFunds(userId: string, amount: number, roundId: string) {
+  return prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new Error('Wallet not found');
 
-  // Critical: Check available balance
-  if (user.balance < amount) {
-    throw new InsufficientBalanceError(amount, user.balance);
-  }
+    const balance = Number(wallet.balance);
+    if (balance < amount) {
+      throw new InsufficientBalanceError(amount, balance);
+    }
 
-  // Atomic: Move from balance to locked
-  user.balance -= amount;
-  user.lockedBalance += amount;
+    // Atomic: debit balance, credit locked
+    const updated = await tx.wallet.update({
+      where: { userId },
+      data: {
+        balance: { decrement: amount },
+        lockedBalance: { increment: amount },
+      },
+    });
 
-  const tx: TransactionRecord = {
-    id: `tx_${++txCounter}_${Date.now()}`,
-    userId,
-    type: 'BET',
-    amount: -amount, // negative = debit
-    roundId,
-    createdAt: new Date(),
-  };
-  transactions.push(tx);
+    // Record transaction
+    const txRecord = await tx.transaction.create({
+      data: {
+        userId,
+        type: 'BET',
+        amount: -amount,
+        roundId,
+      },
+    });
 
-  log.info('Funds locked', {
-    userId,
-    amount,
-    roundId,
-    newBalance: user.balance,
-    newLocked: user.lockedBalance,
+    // Update cache for game engine
+    cacheUser(userId, {
+      username: null,
+      balance: Number(updated.balance),
+      lockedBalance: Number(updated.lockedBalance),
+    });
+
+    log.info('Funds locked', {
+      userId, amount, roundId,
+      newBalance: Number(updated.balance),
+      newLocked: Number(updated.lockedBalance),
+    });
+
+    return txRecord;
   });
-
-  return tx;
 }
 
 /**
  * Settle a bet - release locked funds and credit winnings
  */
-export function settleBet(
+export async function settleBet(
   userId: string,
   amount: number,
   payout: number,
   roundId: string
-): TransactionRecord | null {
-  const user = getUserById(userId);
-  if (!user) throw new Error('User not found');
-
-  // Release locked funds
-  user.lockedBalance = Math.max(0, user.lockedBalance - amount);
-
-  // Credit winnings if any
-  if (payout > 0) {
-    user.balance += payout;
-
-    const tx: TransactionRecord = {
-      id: `tx_${++txCounter}_${Date.now()}`,
-      userId,
-      type: 'WIN',
-      amount: payout,
-      roundId,
-      createdAt: new Date(),
-    };
-    transactions.push(tx);
-
-    log.info('Bet settled with win', {
-      userId,
-      betAmount: amount,
-      payout,
-      roundId,
-      newBalance: user.balance,
+) {
+  return prisma.$transaction(async (tx) => {
+    // Release locked funds
+    const wallet = await tx.wallet.update({
+      where: { userId },
+      data: {
+        lockedBalance: { decrement: amount },
+        balance: payout > 0 ? { increment: payout } : undefined,
+      },
     });
 
-    return tx;
-  }
+    // Record WIN transaction if payout > 0
+    let txRecord = null;
+    if (payout > 0) {
+      txRecord = await tx.transaction.create({
+        data: {
+          userId,
+          type: 'WIN',
+          amount: payout,
+          roundId,
+        },
+      });
 
-  log.info('Bet settled with loss', {
-    userId,
-    betAmount: amount,
-    roundId,
-    newBalance: user.balance,
+      log.info('Bet settled with win', {
+        userId, betAmount: amount, payout, roundId,
+        newBalance: Number(wallet.balance),
+      });
+    } else {
+      log.info('Bet settled with loss', {
+        userId, betAmount: amount, roundId,
+        newBalance: Number(wallet.balance),
+      });
+    }
+
+    // Update cache
+    cacheUser(userId, {
+      username: null,
+      balance: Number(wallet.balance),
+      lockedBalance: Number(wallet.lockedBalance),
+    });
+
+    return txRecord;
   });
-
-  return null;
 }
 
 /**
  * Rollback a bet (refund locked funds)
  */
-export function rollbackBet(userId: string, amount: number, roundId: string): TransactionRecord {
-  const user = getUserById(userId);
-  if (!user) throw new Error('User not found');
+export async function rollbackBet(userId: string, amount: number, roundId: string) {
+  return prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.update({
+      where: { userId },
+      data: {
+        lockedBalance: { decrement: amount },
+        balance: { increment: amount },
+      },
+    });
 
-  user.lockedBalance = Math.max(0, user.lockedBalance - amount);
-  user.balance += amount;
+    const txRecord = await tx.transaction.create({
+      data: {
+        userId,
+        type: 'ROLLBACK',
+        amount,
+        roundId,
+      },
+    });
 
-  const tx: TransactionRecord = {
-    id: `tx_${++txCounter}_${Date.now()}`,
-    userId,
-    type: 'ROLLBACK',
-    amount,
-    roundId,
-    createdAt: new Date(),
-  };
-  transactions.push(tx);
+    cacheUser(userId, {
+      username: null,
+      balance: Number(wallet.balance),
+      lockedBalance: Number(wallet.lockedBalance),
+    });
 
-  log.info('Bet rolled back', { userId, amount, roundId, newBalance: user.balance });
-
-  return tx;
+    log.info('Bet rolled back', { userId, amount, roundId, newBalance: Number(wallet.balance) });
+    return txRecord;
+  });
 }
 
 /**
  * Get transaction history for a user
  */
-export function getTransactionHistory(userId: string, limit: number = 50): TransactionRecord[] {
-  return transactions
-    .filter(tx => tx.userId === userId)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, limit);
+export async function getTransactionHistory(userId: string, limit: number = 50) {
+  return prisma.transaction.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
 }
 
 /**
- * Deposit funds (admin or payment gateway)
+ * Deposit funds
  */
-export function deposit(userId: string, amount: number): TransactionRecord {
-  const user = getUserById(userId);
-  if (!user) throw new Error('User not found');
+export async function deposit(userId: string, amount: number) {
+  return prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.update({
+      where: { userId },
+      data: {
+        balance: { increment: amount },
+        totalDeposit: { increment: amount },
+      },
+    });
 
-  user.balance += amount;
+    const txRecord = await tx.transaction.create({
+      data: { userId, type: 'DEPOSIT', amount },
+    });
 
-  const tx: TransactionRecord = {
-    id: `tx_${++txCounter}_${Date.now()}`,
-    userId,
-    type: 'DEPOSIT',
-    amount,
-    roundId: null,
-    createdAt: new Date(),
-  };
-  transactions.push(tx);
+    cacheUser(userId, {
+      username: null,
+      balance: Number(wallet.balance),
+      lockedBalance: Number(wallet.lockedBalance),
+    });
 
-  log.info('Deposit', { userId, amount, newBalance: user.balance });
-  return tx;
+    log.info('Deposit', { userId, amount, newBalance: Number(wallet.balance) });
+    return txRecord;
+  });
 }
