@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useCallback, useRef } from 'react';
-import dynamic from 'next/dynamic';
 import GameHeader from '@/app/components/GameHeader';
 import NumberGrid from '@/app/components/NumberGrid';
 import BetControls from '@/app/components/BetControls';
@@ -15,21 +14,13 @@ import LeadersTab from '@/app/components/tabs/LeadersTab';
 import useGameStore from '@/app/store/gameStore';
 import useTelegram from '@/shared/telegram/useTelegram';
 
-const BallDraw3D = dynamic(() => import('@/app/components/BallDraw3D'), {
-  ssr: false,
-  loading: () => <div style={{ height: '180px' }} />,
-});
-
 /**
  * KenoGame - Main game page
  *
- * REAL KENO FLOW (DB-backed):
- * 1. Fetch active round from /api/game/round (creates one if none)
- * 2. Timer counts down from round's startedAt
- * 3. Player selects numbers + places bet via /api/game/bet
- * 4. When timer hits 0 → call /api/game/draw → server draws 20 numbers + settles bets
- * 5. Show drawn numbers with animation
- * 6. After animation → fetch new round → restart cycle
+ * LAYOUT FIX: Number grid is ALWAYS visible.
+ * During draw, the drawn balls appear in a compact bar below the header.
+ * The grid highlights drawn numbers and matched selections in real-time.
+ * No more BallDraw3D pushing the grid off-screen.
  */
 export default function KenoGame() {
   const {
@@ -118,7 +109,7 @@ export default function KenoGame() {
       if (data.success && data.data.drawnNumbers) {
         const nums: number[] = data.data.drawnNumbers;
 
-        // Animate balls one by one
+        // Update round status
         useGameStore.setState({
           activeRound: state.activeRound ? {
             ...state.activeRound,
@@ -126,12 +117,13 @@ export default function KenoGame() {
           } : null,
         });
 
+        // Animate balls one by one — grid shows matches in real-time
         for (let i = 0; i < nums.length; i++) {
           await new Promise(resolve => setTimeout(resolve, 300));
           addDrawnNumber(nums[i], i);
         }
 
-        // Check if user won — update wallet
+        // Refresh wallet after settlement
         const userState = useGameStore.getState();
         if (userState.user?.id) {
           const walletRes = await fetch(`/api/wallet/balance?userId=${userState.user.id}`);
@@ -139,7 +131,7 @@ export default function KenoGame() {
           if (walletData.success) setWallet(walletData.data);
         }
 
-        // Wait, then start next round
+        // Pause to show results
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
     } catch (err) {
@@ -148,29 +140,25 @@ export default function KenoGame() {
 
     setDrawing(false);
     resetRound();
-    await fetchGameData(); // Fetch new round
+    await fetchGameData();
     drawInProgress.current = false;
   }, [setDrawing, addDrawnNumber, resetRound, fetchGameData, setWallet]);
 
-  // ─── TIMER COUNTDOWN (drives the game loop) ─────────────
+  // ─── TIMER COUNTDOWN ─────────────────────────────────────
   useEffect(() => {
-    // Initial fetch
     fetchGameData();
 
-    // Timer ticks every second
     timerRef.current = setInterval(() => {
       const state = useGameStore.getState();
-      if (state.isDrawing) return; // Don't tick during draw
+      if (state.isDrawing) return;
 
       if (state.timeRemaining > 0) {
         setTimeRemaining(state.timeRemaining - 1);
       } else if (state.timeRemaining <= 0 && state.activeRound && !drawInProgress.current) {
-        // Timer expired — trigger the draw
         triggerDraw();
       }
     }, 1000);
 
-    // Also poll for fresh data periodically
     const pollInterval = setInterval(fetchGameData, 10000);
 
     return () => {
@@ -194,10 +182,16 @@ export default function KenoGame() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)', maxWidth: '500px', margin: '0 auto' }}>
       <GameHeader />
-      {(isDrawing || drawnNumbers.length > 0) && <BallDraw3D />}
+
+      {/* Drawn balls area — compact bar, only shows during/after draw */}
       <BallDrawArea />
+
+      {/* Number grid — ALWAYS VISIBLE, even during draw */}
       <NumberGrid />
-      <BetControls />
+
+      {/* Bet controls — hide during draw to save space */}
+      {!isDrawing && drawnNumbers.length === 0 && <BetControls />}
+
       <TabNavigation />
       <div className="flex-1" style={{ background: 'var(--bg-primary)' }}>
         {renderTabContent()}
