@@ -1,26 +1,178 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg-primary: #0d1117;
+    --bg-secondary: #131b25;
+    --bg-card: #162230;
+    --bg-cell: #1a2d3d;
+    --bg-cell-hover: #223a4d;
+    --bg-cell-selected: #2d5a3e;
+    --text-primary: #e4e8ec;
+    --text-secondary: #8b949e;
+    --green-accent: #4ade80;
+    --green-dark: #22543d;
+    --green-gradient-start: #2d6b4a;
+    --green-gradient-end: #1a4a32;
+    --yellow-accent: #fbbf24;
+    --red-accent: #ef4444;
+    --border-color: #21333d;
   }
 }
 
+@layer components {
+  .keno-cell {
+    @apply flex items-center justify-center rounded-md cursor-pointer transition-all duration-200 font-semibold text-sm select-none;
+    background: var(--bg-cell);
+    color: var(--text-primary);
+    min-height: 38px;
+  }
+
+  .keno-cell:hover {
+    background: var(--bg-cell-hover);
+    transform: scale(1.05);
+  }
+
+  .keno-cell.selected {
+    background: var(--green-accent);
+    color: #000;
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.4);
+  }
+
+  .keno-cell.drawn {
+    background: var(--green-accent);
+    color: #000;
+    animation: pulse-glow 1s ease-out;
+  }
+
+  .keno-cell.matched {
+    background: var(--green-accent);
+    color: #000;
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.6);
+  }
+
+  .btn-bet {
+    background: linear-gradient(180deg, var(--green-gradient-start) 0%, var(--green-gradient-end) 100%);
+    @apply w-full py-4 text-xl font-bold text-white rounded-lg transition-all duration-200 uppercase tracking-wider;
+  }
+
+  .btn-bet:hover {
+    background: linear-gradient(180deg, #3d8b5a 0%, #2d6a42 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(74, 222, 128, 0.3);
+  }
+
+  .btn-bet:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .tab-btn {
+    @apply flex items-center gap-1 px-2 py-2 text-xs font-medium transition-colors duration-200 whitespace-nowrap;
+    color: var(--text-secondary);
+  }
+
+  .tab-btn.active {
+    color: var(--green-accent);
+  }
+
+  .bet-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    @apply rounded-lg p-3 mb-2;
+  }
+
+  .stat-bar {
+    background: var(--green-accent);
+    @apply h-2 rounded-full transition-all duration-500;
+  }
+
+  .header-bar {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .draw-area {
+    background: radial-gradient(ellipse at center, #1a3a2a 0%, var(--bg-primary) 70%);
+  }
+
+  .glow-ball {
+    @apply rounded-full flex items-center justify-center font-bold;
+    box-shadow: 0 0 30px rgba(74, 222, 128, 0.6), 0 0 60px rgba(74, 222, 128, 0.3);
+    background: radial-gradient(circle, #4ade80 0%, #22543d 70%, #0d1117 100%);
+    animation: ball-drop 0.5s ease-out;
+  }
+
+  .number-chip {
+    @apply inline-flex items-center justify-center w-8 h-8 rounded border text-xs font-medium;
+    background: var(--bg-cell);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .number-chip.hit {
+    background: var(--green-accent);
+    color: #000;
+    border-color: var(--green-accent);
+  }
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); transform: scale(1.1); }
+  70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); transform: scale(1); }
+}
+
+@keyframes ball-drop {
+  0% { transform: translateY(-50px) scale(0.5); opacity: 0; }
+  60% { transform: translateY(5px) scale(1.1); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+/* Mobile optimization */
+html, body {
+  overflow-x: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Hot/cold number dots */
+.hot-dot {
+  @apply absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full;
+  background: var(--red-accent);
+}
+
+.cold-dot {
+  @apply absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full;
+  background: #3b82f6;
 }

@@ -1,0 +1,30 @@
+﻿Γû▓ Next.js 16.1.6 (Turbopack)
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 6.9s
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+[2026-03-06T12:38:42.788Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+[2026-03-06T12:38:42.789Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+[2026-03-06T12:38:42.836Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+  Generating static pages using 7 workers (0/10) ...
+  Generating static pages using 7 workers (2/10) 
+  Generating static pages using 7 workers (4/10) 
+  Generating static pages using 7 workers (7/10) 
+Γ£ô Generating static pages using 7 workers (10/10) in 569.9ms
+  Finalizing page optimization ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /api/auth/refresh
+Γö£ ╞Æ /api/auth/telegram
+Γö£ ╞Æ /api/game/bet
+Γö£ ╞Æ /api/game/history
+Γö£ ╞Æ /api/game/round
+Γöö ╞Æ /api/wallet/balance
+
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+
