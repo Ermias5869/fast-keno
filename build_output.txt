@@ -2,17 +2,17 @@
 - Environments: .env
 
   Creating an optimized production build ...
-Γ£ô Compiled successfully in 5.6s
+Γ£ô Compiled successfully in 7.2s
   Running TypeScript ...
   Collecting page data using 7 workers ...
-[2026-03-06T18:16:48.247Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
-[2026-03-06T18:16:48.294Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
-[2026-03-06T18:16:48.317Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+[2026-03-06T18:37:50.168Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+[2026-03-06T18:37:50.216Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
+[2026-03-06T18:37:50.235Z] [INFO] [game-engine] Demo data generated { rounds: 10 }
   Generating static pages using 7 workers (0/10) ...
   Generating static pages using 7 workers (2/10) 
   Generating static pages using 7 workers (4/10) 
   Generating static pages using 7 workers (7/10) 
-Γ£ô Generating static pages using 7 workers (10/10) in 372.1ms
+Γ£ô Generating static pages using 7 workers (10/10) in 605.5ms
   Finalizing page optimization ...
 
 Route (app)
