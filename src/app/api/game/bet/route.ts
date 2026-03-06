@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { placeBet, startNewRound, getActiveRound } from '@/services/game-service';
-import { handleApiError } from '@/shared/errors';
+import prisma from '@/infra/db';
+import { startNewRound, getActiveRound } from '@/services/game-service';
 
-// Zod validation schema for bet request
+// Zod validation schema
 const BetSchema = z.object({
-  roundId: z.string(),
+  roundId: z.string().optional(),
   selectedNumbers: z.array(z.number().int().min(1).max(80)).min(1).max(10),
   amount: z.number().min(5).max(10000),
   userId: z.string().optional(),
@@ -14,11 +14,10 @@ const BetSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-
-    console.log('[BET-API] POST /api/game/bet received');
+    console.log('[BET-API] POST /api/game/bet');
     console.log('[BET-API] body:', JSON.stringify(body));
 
-    // Validate input with Zod
+    // 1. Validate input
     const parsed = BetSchema.safeParse(body);
     if (!parsed.success) {
       console.error('[BET-API] Validation failed:', parsed.error.issues);
@@ -28,10 +27,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let { roundId, selectedNumbers, amount, userId } = parsed.data;
+    const { selectedNumbers, amount } = parsed.data;
+    let userId = parsed.data.userId || '';
 
-    // Extract userId from JWT if available
-    if (!userId || userId === '') {
+    // 2. Extract userId from JWT if not provided
+    if (!userId) {
       const authHeader = request.headers.get('authorization');
       if (authHeader) {
         try {
@@ -40,44 +40,182 @@ export async function POST(request: NextRequest) {
           const user = await verifyToken(token);
           userId = user.id;
           console.log('[BET-API] userId from JWT:', userId);
-        } catch {
-          console.log('[BET-API] JWT verification failed, using fallback');
+        } catch (e) {
+          console.log('[BET-API] JWT failed:', e);
         }
       }
     }
 
-    // Fallback: if still no userId, use a dev user
-    if (!userId || userId === '') {
-      userId = 'dev_user';
-      console.log('[BET-API] Using fallback userId:', userId);
-    }
-
-    // If no active round, start one
-    if (!roundId || roundId === '') {
-      const activeRound = getActiveRound();
-      if (activeRound) {
-        roundId = activeRound.id;
-      } else {
-        const newRound = startNewRound();
-        roundId = newRound.id;
+    // 3. Ensure we have a valid user in the database
+    if (!userId) {
+      console.log('[BET-API] No userId, creating anonymous player');
+      try {
+        const { createDevUser } = await import('@/services/auth-service');
+        const devResult = await createDevUser('anon_' + Date.now());
+        userId = devResult.user.id;
+        console.log('[BET-API] Created anonymous user:', userId);
+      } catch (e) {
+        console.error('[BET-API] Failed to create anonymous user:', e);
+        return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
       }
-      console.log('[BET-API] Using roundId:', roundId);
     }
 
-    console.log('[BET-API] Placing bet:', { userId, roundId, selectedNumbers, amount });
+    // 4. Verify user exists in DB
+    let dbUser;
+    try {
+      dbUser = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { wallet: true },
+      });
+    } catch (e) {
+      console.error('[BET-API] DB lookup failed:', e);
+    }
 
-    const result = await placeBet(userId, roundId, selectedNumbers, amount);
-    console.log('[BET-API] Bet placed successfully:', result.id);
+    if (!dbUser) {
+      console.log('[BET-API] User not found in DB:', userId);
+      return NextResponse.json({ success: false, error: 'User not found. Please re-open the app from Telegram.' }, { status: 404 });
+    }
 
-    return NextResponse.json({ success: true, data: result });
+    // 5. Check balance
+    const balance = Number(dbUser.wallet?.balance || 0);
+    if (balance < amount) {
+      console.log('[BET-API] Insufficient balance:', balance, '<', amount);
+      return NextResponse.json(
+        { success: false, error: `Insufficient balance: have ${balance.toFixed(2)}, need ${amount.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
+
+    // 6. Get or create a round ID for the bet record
+    let roundId = parsed.data.roundId || '';
+    if (!roundId) {
+      const activeRound = getActiveRound();
+      roundId = activeRound?.id || 'round_' + Date.now();
+    }
+
+    // 7. Find or create the round in DB
+    let dbRound;
+    try {
+      dbRound = await prisma.round.findUnique({ where: { id: roundId } });
+    } catch {
+      // Round might not be in DB (in-memory only)
+    }
+
+    if (!dbRound) {
+      try {
+        dbRound = await prisma.round.create({
+          data: {
+            id: roundId,
+            roundNumber: Date.now() % 1000000,
+            status: 'BETTING_OPEN',
+            drawnNumbers: [],
+            totalBets: 0,
+            totalPayout: 0,
+          },
+        });
+        console.log('[BET-API] Created round in DB:', roundId);
+      } catch (e) {
+        // Round might already exist (race condition) - try to find it again
+        console.log('[BET-API] Round create failed (may exist):', e);
+        try {
+          dbRound = await prisma.round.findUnique({ where: { id: roundId } });
+        } catch {
+          // Use a fresh round ID if all else fails
+          roundId = 'round_' + Date.now();
+          dbRound = await prisma.round.create({
+            data: {
+              id: roundId,
+              roundNumber: Date.now() % 1000000,
+              status: 'BETTING_OPEN',
+              drawnNumbers: [],
+              totalBets: 0,
+              totalPayout: 0,
+            },
+          });
+        }
+      }
+    }
+
+    // 8. Create bet in DB + deduct balance (atomic transaction)
+    const betResult = await prisma.$transaction(async (tx) => {
+      // Deduct balance
+      const updatedWallet = await tx.wallet.update({
+        where: { userId },
+        data: {
+          balance: { decrement: amount },
+          lockedBalance: { increment: amount },
+        },
+      });
+
+      // Create bet record
+      const bet = await tx.bet.create({
+        data: {
+          userId,
+          roundId,
+          selectedNumbers: selectedNumbers.sort((a, b) => a - b),
+          amount,
+          status: 'PENDING',
+        },
+      });
+
+      // Create transaction record
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'BET',
+          amount: -amount,
+          roundId,
+        },
+      });
+
+      // Update round total bets
+      await tx.round.update({
+        where: { id: roundId },
+        data: { totalBets: { increment: amount } },
+      });
+
+      return {
+        bet,
+        newBalance: Number(updatedWallet.balance),
+        newLocked: Number(updatedWallet.lockedBalance),
+      };
+    });
+
+    console.log('[BET-API] Bet placed!', {
+      betId: betResult.bet.id,
+      userId,
+      roundId,
+      amount,
+      picks: selectedNumbers.length,
+      newBalance: betResult.newBalance,
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: betResult.bet.id,
+        selectedNumbers: betResult.bet.selectedNumbers,
+        amount: Number(betResult.bet.amount),
+        status: betResult.bet.status,
+        maskedUsername: dbUser.username || 'player',
+        payout: null,
+        wallet: {
+          balance: betResult.newBalance,
+          lockedBalance: betResult.newLocked,
+        },
+      },
+    });
   } catch (error) {
-    console.error('[BET-API] Error:', error);
-    const { message, status, code } = handleApiError(error);
-    return NextResponse.json({ success: false, error: message, code }, { status });
+    console.error('[BET-API] CRASH:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
 
-// Start a new round (admin/dev endpoint)
+// Start a new round
 export async function PUT() {
   try {
     let round = getActiveRound();
@@ -94,7 +232,10 @@ export async function PUT() {
     }
     return NextResponse.json({ success: true, data: round });
   } catch (error) {
-    const { message, status, code } = handleApiError(error);
-    return NextResponse.json({ success: false, error: message, code }, { status });
+    console.error('[BET-API] PUT error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to start round' },
+      { status: 500 }
+    );
   }
 }
