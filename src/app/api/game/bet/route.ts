@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import prisma from '@/infra/db';
-import { startNewRound, getActiveRound } from '@/services/game-service';
+import crypto from 'crypto';
+import { generateSeed, hashSeed } from '@/shared/utils';
+import { GAME_CONFIG } from '@/shared/constants/payout';
 
 // Zod validation schema
 const BetSchema = z.object({
@@ -89,8 +91,11 @@ export async function POST(request: NextRequest) {
     // 6. Get or create a round ID for the bet record
     let roundId = parsed.data.roundId || '';
     if (!roundId) {
-      const activeRound = getActiveRound();
-      roundId = activeRound?.id || 'round_' + Date.now();
+      const activeRound = await prisma.round.findFirst({
+        where: { status: 'BETTING_OPEN' },
+        orderBy: { startedAt: 'desc' },
+      });
+      roundId = activeRound?.id || '';
     }
 
     // 7. Find or create the round in DB
@@ -218,19 +223,47 @@ export async function POST(request: NextRequest) {
 // Start a new round
 export async function PUT() {
   try {
-    let round = getActiveRound();
-    if (!round || round.status === 'FINISHED') {
-      const newRound = startNewRound();
-      round = {
-        id: newRound.id,
-        roundNumber: newRound.roundNumber,
-        status: newRound.status,
-        drawnNumbers: [],
-        timeRemaining: 54,
-        totalBets: 0,
-      };
+    // Find active round from DB
+    let activeRound = await prisma.round.findFirst({
+      where: { status: { in: ['BETTING_OPEN', 'DRAWING'] } },
+      orderBy: { startedAt: 'desc' },
+    });
+
+    if (!activeRound) {
+      const serverSeed = generateSeed();
+      activeRound = await prisma.round.create({
+        data: {
+          roundNumber: Math.floor(Date.now() / 1000) % 1000000,
+          status: 'BETTING_OPEN',
+          drawnNumbers: [],
+          totalBets: 0,
+          totalPayout: 0,
+          provablyFair: {
+            create: {
+              serverSeed,
+              serverSeedHash: hashSeed(serverSeed),
+              clientSeed: crypto.randomBytes(16).toString('hex'),
+              nonce: 0,
+            },
+          },
+        },
+      });
     }
-    return NextResponse.json({ success: true, data: round });
+
+    const elapsed = Date.now() - activeRound.startedAt.getTime();
+    const timeRemaining = Math.max(0, Math.ceil((GAME_CONFIG.roundDurationMs - elapsed) / 1000));
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: activeRound.id,
+        roundNumber: activeRound.roundNumber,
+        status: activeRound.status,
+        drawnNumbers: activeRound.drawnNumbers,
+        timeRemaining,
+        totalBets: Number(activeRound.totalBets),
+      },
+    });
   } catch (error) {
     console.error('[BET-API] PUT error:', error);
     return NextResponse.json(
