@@ -116,6 +116,52 @@
     color: #000;
     border-color: var(--green-accent);
   }
+
+  /* Horizontal Match / Pays grid (reference style) */
+  .match-pays-grid {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1;
+  }
+
+  .match-pays-label {
+    font-size: 12px;
+    color: #64748b;
+    min-width: 42px;
+    flex-shrink: 0;
+  }
+
+  .match-pays-value {
+    font-size: 13px;
+    color: #cbd5e1;
+  }
+
+  /* Possible win */
+  .possible-win {
+    color: #e6edf3;
+  }
+
+  /* Selected chip (rounded rectangle, deselect button) */
+  .selected-chip {
+    @apply inline-flex items-center justify-center text-sm font-bold cursor-pointer transition-all duration-150;
+    min-width: 36px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 6px;
+    background: var(--bg-cell);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+  }
+
+  .selected-chip:hover {
+    background: #f87171;
+    color: #000;
+    border-color: #f87171;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes pulse-glow {
