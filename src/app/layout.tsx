@@ -3,8 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SyntaxKeno - Fast Keno Betting Platform",
-  description: "Enterprise-grade Keno-style betting platform with Telegram WebApp integration. Choose numbers, place bets, win big.",
-  keywords: ["keno", "betting", "casino", "telegram", "web3"],
+  description: "Enterprise-grade Keno-style betting platform",
 };
 
 export const viewport: Viewport = {
@@ -27,18 +26,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body
-        className="antialiased"
-        style={{
-          fontFamily: "'Inter', sans-serif",
-          background: 'var(--bg-primary)',
-          color: 'var(--text-primary)',
-        }}
-      >
+      <body className="antialiased font-inter bg-[#06090c] text-white">
         {children}
       </body>
     </html>

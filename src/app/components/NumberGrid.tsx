@@ -39,44 +39,86 @@ export default function NumberGrid() {
   }
 
   return (
-    <div className="px-2 py-2">
+    <div className="px-2 py-2 ">
       {/* Selection info */}
-      <div className="flex items-center gap-3 mb-3 px-1">
-        <div className="flex items-center gap-1 relative">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold"
-            style={{
-              background: 'radial-gradient(circle, #4ade80 0%, #166534 70%)',
-              boxShadow: '0 0 15px rgba(74,222,128,0.3)',
-              color: '#fff',
-            }}>
-            {selectedNumbers.length || '?'}
-          </div>
-          <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-            style={{ background: '#1a2d3d', border: '1px solid #4ade80', color: '#4ade80' }}>
-            80
-          </div>
-          <div className="absolute -top-2 left-4 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-            style={{ background: '#1a2d3d', border: '1px solid #4ade80', color: '#4ade80' }}>
-            10
-          </div>
-        </div>
+     <div
+  className="relative flex items-center gap-4 px-4 py-4 mb-3 ml-10 h-40 rounded-xl overflow-hidden"
+  style={{
+    background: 'linear-gradient(180deg,#1a2d33 0%,#142126 100%)',
+    border: '1px solid #23363d',
+  }}
+>
 
-        <div className="flex-1">
-          <h2 className="text-lg font-bold" style={{ color: '#e4e8ec' }}>Choose 1–10 numbers</h2>
-          <p className="text-sm font-medium" style={{ color: '#4ade80' }}>From 1 to 80</p>
-        </div>
+  {/* floating balls */}
+  <div className="absolute left-6 -top-4 flex gap-2">
 
-        {/* Clear selection */}
-        {selectedNumbers.length > 0 && (
-          <button
-            onClick={() => useGameStore.getState().clearSelection()}
-            className="px-2 py-1 rounded text-xs font-bold"
-            style={{ color: '#f87171', border: '1px solid #f87171' }}
-          >
-            CLEAR
-          </button>
-        )}
-      </div>
+    <div
+      className="w-9 h-9 mt-5 rounded-full flex items-center justify-center text-xs font-bold"
+      style={{
+        background: 'radial-gradient(circle at 30% 30%,#3a4d56,#0f1c22)',
+        color: '#cbd5e1',
+        boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.1)'
+      }}
+    >
+      80
+    </div>
+
+    <div
+      className="w-11 h-11 mt-5 rounded-full flex items-center justify-center text-sm font-bold"
+      style={{
+        background: 'radial-gradient(circle at 30% 30%,#3a4d56,#0f1c22)',
+        color: '#cbd5e1'
+      }}
+    >
+      10
+    </div>
+
+  </div>
+
+  {/* big green ball */}
+  <div
+    className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold"
+    style={{
+      background: 'radial-gradient(circle at 100% 100%,#4ade80,#166534)',
+      color: '#fff',
+      boxShadow: '0 0 20px rgba(58, 69, 62, 0.5)'
+    }}
+  >
+    {selectedNumbers.length || 1}
+  </div>
+
+  {/* title */}
+  <div className="flex-1">
+
+    <h2
+      className="text-xl font-bold"
+      style={{ color: '#e6edf3' }}
+    >
+      Choose 10 numbers
+    </h2>
+
+    <p
+      className="text-sm font-semibold"
+      style={{ color: '#4ade80' }}
+    >
+      From 1 to 80
+    </p>
+
+  </div>
+
+  {/* help icon */}
+  <div
+    className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold cursor-pointer"
+    style={{
+      background: '#1a2d33',
+      border: '1px solid #2e4850',
+      color: '#6ee7b7'
+    }}
+  >
+    ?
+  </div>
+
+</div>
 
       {/* Number grid */}
       <div className="grid grid-cols-10 gap-1">
@@ -101,7 +143,10 @@ export default function NumberGrid() {
                 fontSize: '13px',
               }}
             >
-              {num}
+              <span className="  text-white tracking-[0.1em] drop-shadow-[0_0_12px_rgba(255,255,255,0.7)]">
+            {num}
+          </span>
+             
               {hotCold === 'hot' && !isSelected && !isDrawn && <span className="hot-dot" />}
               {hotCold === 'cold' && !isSelected && !isDrawn && <span className="cold-dot" />}
             </button>

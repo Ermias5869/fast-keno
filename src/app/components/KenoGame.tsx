@@ -119,7 +119,7 @@ export default function KenoGame() {
 
         // Animate balls one by one — grid shows matches in real-time
         for (let i = 0; i < nums.length; i++) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           addDrawnNumber(nums[i], i);
         }
 
@@ -178,24 +178,29 @@ export default function KenoGame() {
       default: return <GameTab />;
     }
   };
+const showPreDrawUI = !isDrawing && drawnNumbers.length === 0
+const showDrawArea = isDrawing && drawnNumbers.length > 0
+
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)', maxWidth: '500px', margin: '0 auto' }}>
-      <GameHeader />
+   
+<GameHeader />
 
-      {/* Drawn balls area — compact bar, only shows during/after draw */}
-      <BallDrawArea />
+{/* Drawn balls area */}
+{showDrawArea && <BallDrawArea />}
 
-      {/* Number grid — ALWAYS VISIBLE, even during draw */}
-      <NumberGrid />
+{/* Number grid */}
+{showPreDrawUI && <NumberGrid />}
 
-      {/* Bet controls — hide during draw to save space */}
-      {!isDrawing && drawnNumbers.length === 0 && <BetControls />}
+{/* Bet controls */}
+{showPreDrawUI && <BetControls />}
 
-      <TabNavigation />
-      <div className="flex-1" style={{ background: 'var(--bg-primary)' }}>
-        {renderTabContent()}
-      </div>
+<TabNavigation />
+
+<div className="flex-1" style={{ background: 'var(--bg-primary)' }}>
+  {renderTabContent()}
+</div>
     </div>
   );
 }
